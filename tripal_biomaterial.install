@@ -1,0 +1,236 @@
+<?php
+/**
+ * @file
+ * Install the tripal biomaterial
+ */
+
+/**
+ * Implements hook_disable().
+ * Disable default views when module is disabled
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_disable() {
+
+  // Disable all default views provided by this module
+  require_once("tripal_biomaterial.views_default.inc");
+  $views = tripal_biomaterial_views_default_views();
+  foreach (array_keys($views) as $view_name) {
+    tripal_disable_view($view_name,FALSE,array('suppress_error' => TRUE));
+  }
+
+}
+
+/**
+ * Implementation of hook_requirements().
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_requirements($phase) {
+  $requirements = array();
+  if ($phase == 'install') {
+    // make sure chado is installed
+    if (!$GLOBALS["chado_is_installed"]) {
+      $requirements ['tripal_biomaterial'] = array(
+        'title' => "tripal_biomaterial",
+        'value' => "ERROR: Chado must be installed before this module can be enabled",
+        'severity' => REQUIREMENT_ERROR,
+      );
+    }
+  }
+  return $requirements;
+}
+
+/**
+ * Implementation of hook_install().
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_install() {
+
+  // create the module's data directory
+ // tripal_create_files_dir('tripal_biomaterial');
+
+  tripal_biomaterial_add_cvs();
+  tripal_biomaterial_add_cvterms();
+
+  // set the default vocabularies
+  tripal_set_default_cv('biomaterialprop', 'type_id', 'biomaterial_property');
+  tripal_set_default_cv('biomaterial_relationship', 'type_id', 'biomaterial_relationship');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_uninstall() {
+
+}
+
+/**
+ * Implementation of hook_schema().
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_schema() {
+  $schema['chado_biomaterial'] = array(
+    'fields' => array(
+      'nid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'vid' => array(
+          'type' => 'int',
+          'not null' => TRUE,
+      ),
+      'biomaterial_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('nid', 'vid', 'biomaterial_id'),
+  );
+  return $schema;
+}
+
+/**
+ * Add cvs pertaining to biomaterials
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_add_cvs() {
+  // Add the cv for biomaterial properties
+  tripal_insert_cv(
+    'biomaterial_property',
+    'Contains properties for biomaterials'
+  );
+
+  // Add cv for relationship types
+  tripal_insert_cv(
+    'biomaterial_relationship',
+    'Contains Types of relationships between biomaterials.'
+  );
+}
+
+/**
+ * Add cvterms pertaining to biomaterials
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_add_cvterms() {
+
+  // Insert cvterm 'Biomaterial Description' into cvterm table of chado
+  // database. This CV term is used to keep track of the biomaterial
+  // description in the biomaterialprop table.
+  tripal_insert_cvterm(
+    array(
+      'name' => 'Biomaterial Description',
+      'definition'  => 'Description of a biomaterial',
+      'cv_name' => 'biomaterial_property',
+      'is_relationship' => 0,
+      'db_name' => 'tripal'
+    ),
+    array('update_existing' => TRUE)
+  );
+}
+
+/**
+ * This is the required update for tripal_biomaterial when upgrading from Drupal core API 6.x.
+ *
+ */
+function tripal_biomaterial_update_7200() {
+
+  // add the biomaterial_property CV
+  try {
+    $cv_id = db_query("SELECT cv_id FROM chado.cv WHERE name = 'biomaterial_property'")->fetchField();
+    if (!$cv_id) {
+      // add the vocabulary
+      $cv_id = db_insert('chado.cv')
+        ->fields(array(
+          'name' => 'biomaterial_property',
+          'definition' => 'Contains properties for biomaterials.'
+        ))
+        ->execute();
+    }
+    // use the new biomaterial_property CV we just added
+    db_insert('tripal_cv_defaults')
+      ->fields(array(
+      'table_name' => 'biomaterialprop',
+      'field_name' => 'type_id',
+      'cv_id' => $cv_id
+      ))
+      ->execute();
+  }
+  catch (\PDOException $e) {
+    $error = $e->getMessage();
+    throw new DrupalUpdateException('Failed to add biomaterial_property vocabulary: '. $error);
+  }
+
+  // add the biomaterial_relationship CV
+  try {
+    $cv_id = db_query("SELECT cv_id FROM chado.cv WHERE name = 'biomaterial_relationship'")->fetchField();
+    if (!$cv_id) {
+      // add the vocabulary
+      $cv_id = db_insert('chado.cv')
+      ->fields(array(
+        'name' => 'biomaterial_relationship',
+        'definition' => 'Contains types of relationships between biomaterials.'
+      ))
+      ->execute();
+    }
+    // use the new biomaterial_property CV we just added
+    db_insert('tripal_cv_defaults')
+      ->fields(array(
+        'table_name' => 'biomaterial_relationship',
+        'field_name' => 'type_id',
+        'cv_id' => $cv_id
+      ))
+      ->execute();
+  }
+  catch (\PDOException $e) {
+    $error = $e->getMessage();
+    throw new DrupalUpdateException('Failed to add biomaterial_relationship vocabulary: '. $error);
+  }
+
+  // For Tripal in Drupal 6 the biomaterial_description cvterm was stored in the
+  // 'tripal' CV.  It should be stored in the new biomaterial_property CV that
+  // is added by this module for Tripal 2.0 and Drupal 7.  So, we need to
+  // reset the CV ID for that term and rename the term to 'Biomaterial Description'
+  // We cannot use the Tripal API calls'because during upgrade the tripal_core
+  // should also be disabled
+  $sql = "
+    UPDATE chado.cvterm CVT
+    SET
+      name = 'Biomaterial Description',
+      cv_id = (SELECT cv_id FROM chado.cv WHERE name = 'biomaterial_property')
+    WHERE
+      name = 'biomaterial_description' AND
+      cv_id = (SELECT cv_id FROM chado.cv WHERE name = 'tripal')
+  ";
+  try {
+    db_query($sql);
+  }
+  catch (\PDOException $e) {
+    $error = $e->getMessage();
+    throw new DrupalUpdateException('Failed to change biomaterial_description property type to the biomaterial_property CV and update the name: '. $error);
+  }
+}
+
+
+/**
+ * Implementation of hook_update_dependencies().  It specifies a list of
+ * other modules whose updates must be run prior to this one.
+ */
+function tripal_biomaterial_update_dependencies() {
+  $dependencies = array();
+
+  // the tripal_cv update 7200 must run prior to update 7200 of this module
+  $dependencies['tripal_biomaterial'][7200] = array(
+    'tripal_cv' => 7200
+  );
+
+  return $dependencies;
+}

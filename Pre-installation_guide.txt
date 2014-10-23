@@ -1,0 +1,83 @@
+The biomaterial module has a template to retrive project related information for a particular biosample/biomaterial. 
+To ensure that projects are correctly retrieved it is essential to add the project_biomaterial table.
+
+Use the following to add the project table in chado and to update tripal with this new custom table.
+
+SQL for adding table and adding indexes
+
+CREATE TABLE project_biomaterial
+(project_biomaterial_id  serial not null,
+primary key (project_biomaterial_id),
+project_id int not null,
+   FOREIGN KEY (project_id) REFERENCES project(project_id) ON DELETE CASCADE,
+   biomaterial_id int not null,
+  FOREIGN KEY (biomaterial_id) REFERENCES biomaterial(biomaterial_id) ON DELETE CASCADE,
+constraint project_bioamterial_c1 unique (project_id, biomaterial_id)
+);
+
+CREATE INDEX project_biomaterial_idx1 ON project_biomaterial (project_id);
+
+CREATE INDEX project_biomaterial_idx2 ON project_biomaterial (biomaterial_id);
+
+Navigate to Home » Administration » Tripal » Chado Schema » Custom Tables
+
+Click add custom table option and paste the following. 
+
+Once the content is saved you should be able to see the custom table with other tables.
+
+array (
+  'table' => 'project_biomaterial',
+  'fields' => array (
+    'project_biomaterial_id' => array (
+      'type' => 'serial',
+      'not null' => true,
+    ),
+    'project_id' => array (
+      'type' => 'int',
+      'not null' => true,
+    ),
+    'biomaterial_id' => array (
+      'type' => 'int',
+      'not null' => true,
+    ),
+  ),
+  'primary key' => array (
+    0 => 'project_biomaterial_id',
+  ),
+  'foreign keys' => array (
+    'project' => array (
+      'table' => 'project',
+      'columns' => array (
+        'project_id' => 'project_id',
+      ),
+    ),
+    'biomaterial' => array (
+      'table' => 'biomaterial',
+      'columns' => array (
+        'biomaterial_id' => 'biomaterial_id',
+      ),
+    ),
+  ),
+)
+
+Next step is populating the project_biomaterial table, for this demo I added dummy values into the table. 
+
+
+insert into chado.project (name, description) values (' V1.0 of Phaseolus vulgaris','A sequence map of the common bean genome for bean improvement'), ('Gary Stacey et.al. 2014','glyma v2.0 assembly');
+
+
+insert into project_biomaterial (biomaterial_id, project_id) values (1,44), (2,44), (3,43),(4,43); #Please check the id's and make sure they don't already exist. 
+
+After the insert statements its in necessary to go ahead and sync the project table, to ensure that corrseponding nodes are created. 
+
+
+An additional template that it included inside the biomaterial module is stock, which retrives the biomaterial-stock relationship. 
+
+To include stock, please alter the biomaterial table to include a new column stock_id. 
+
+alter table chado.biomaterial add column stock_id int;
+
+After alter please populate the stock_id column to reflect the stock-biomaterial relationship. 
+
+
+

@@ -1,0 +1,227 @@
+<?php
+/**
+ * @file
+ * Integrates the Chado Biomaterial tables with Drupal Nodes & Views
+ */
+
+require_once 'api/tripal_biomaterial.DEPRECATED.inc';
+
+require_once 'theme/tripal_biomaterial.theme.inc';
+
+require_once 'includes/tripal_biomaterial.admin.inc';
+require_once 'includes/tripal_biomaterial.chado_node.inc';
+
+/**
+ * Implements hook_views_api().
+ *
+ * Essentially this hook tells drupal that there is views support for
+ *  for this module which then includes tripal_biomaterial.views.inc where all the
+ *  views integration code is
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_views_api() {
+  return array(
+      'api' => 3.0,
+  );
+}
+
+/**
+ * Implements hook_menu().
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_menu() {
+  $items[ 'admin/tripal/chado/tripal_biomaterial' ]= array(
+    'title' => 'Biomaterials',
+    'description' => ('A biomaterial is a sample information used by labs for sequencing.'),
+    'page callback' => 'tripal_biomaterial_admin_biomaterial_view',
+    'access arguments' => array('administer tripal biomaterial'),
+    'type' => MENU_NORMAL_ITEM
+  );
+
+  $items['admin/tripal/chado/tripal_biomaterial/help']= array(
+    'title' => 'Help',
+    'description' => ("Basic Description of Tripal Biomaterial Module Functionality."),
+    'page callback' => 'theme',
+    'page arguments' => array('tripal_biomaterial_help'),
+    'access arguments' => array('administer tripal biomaterial'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 6
+  );
+
+  $items['admin/tripal/chado/tripal_biomaterial/configuration']= array(
+    'title' => 'Settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('tripal_biomaterial_admin'),
+    'access arguments' => array('administer tripal biomaterial'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 4
+  );
+
+  $items['admin/tripal/chado/tripal_biomaterial/sync'] = array(
+    'title' => ' Sync',
+    'description' => 'Create pages on this site for biomaterials stored in Chado',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('chado_node_sync_form', 'tripal_biomaterial', 'chado_biomaterial'),
+    'access arguments' => array('administer tripal biomaterial'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 0
+  );
+  
+  $items['admin/tripal/chado/tripal_biomaterial/chado_biomaterial_toc'] = array(
+    'title' => ' TOC',
+    'description' => 'Manage the table of contents for biomaterial nodes.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('tripal_core_content_type_toc_form', 'chado_biomaterial'),
+    'access arguments' => array('administer tripal biomaterial'),
+    'type' => MENU_LOCAL_TASK,
+    'file' =>  'includes/tripal_core.toc.inc',
+    'file path' => drupal_get_path('module', 'tripal_core'),
+    'weight' => 3
+  );
+
+  $items['admin/tripal/chado/tripal_biomaterial/views/biomaterials/enable'] = array(
+    'title' => 'Enable Biomaterial Administrative View',
+    'page callback' => 'tripal_enable_view',
+    'page arguments' => array('tripal_biomaterial_admin_biomaterials', 'admin/tripal/chado/tripal_biomaterial'),
+    'access arguments' => array('administer tripal biomaterial'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_search_biological_data_views().
+ *
+ * Adds the described views to the "Search Data" Page created by Tripal Views
+ */
+function tripal_biomaterial_search_biological_data_views() {
+  return array(
+    'tripal_biomaterial_user_biomaterials' => array(
+      'machine_name' => 'tripal_biomaterial_user_biomaterials',
+      'human_name' => 'Biomaterials',
+      'description' => 'A biomaterial. Can be used for grouping data such as with the natural diversity module data.',
+      'link' => 'chado/biomaterial'
+    ),
+  );
+}
+
+/**
+ * Implements hook_help().
+ * Adds a help page to the module list
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_help ($path, $arg) {
+  if ($path == 'admin/help#tripal_biomaterial') {
+    return theme('tripal_biomaterial_help', array());
+  }
+}
+
+/**
+ * Implements hook_permission()
+ *
+ *  This function sets the permission for the user to access the information in the database.
+ *  This includes creating, inserting, deleting and updating of information in the database
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_permission() {
+  return array(
+    'access chado_biomaterial content' => array(
+      'title' => t('View Biomaterials'),
+      'description' => t('Allow users to view biomaterial pages.'),
+    ),
+    'create chado_biomaterial content' => array(
+      'title' => t('Create Biomaterials'),
+      'description' => t('Allow users to create new biomaterial pages.'),
+    ),
+    'delete chado_biomaterial content' => array(
+      'title' => t('Delete Biomaterials'),
+      'description' => t('Allow users to delete biomaterial pages.'),
+    ),
+    'edit chado_biomaterial content' => array(
+      'title' => t('Edit Biomaterials'),
+      'description' => t('Allow users to edit biomaterial pages.'),
+    ),
+    'administer tripal biomaterial' => array(
+      'title' => t('Administer Biomaterials'),
+      'description' => t('Allow users to administer all biomaterials.'),
+    ),
+  );
+}
+
+/**
+ *  Implements hook_theme().
+ *
+ *  We need to let drupal know about our theme functions and their arguments.
+ *  We create theme functions to allow users of the module to customize the
+ *  look and feel of the output generated in this module
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_theme($existing, $type, $theme, $path) {
+  $core_path = drupal_get_path('module', 'tripal_core');
+
+  $items = array(
+    'node__chado_biomaterial' => array(
+      'template' => 'node--chado-generic',
+      'render element' => 'node',
+      'base hook' => 'node',
+      'path' => "$core_path/theme/templates",
+    ),
+    'tripal_biomaterial_base' => array(
+      'variables' => array('node' => NULL),
+      'template' => 'tripal_biomaterial_base',
+      'path' => "$path/theme/templates",
+    ),
+    'tripal_biomaterial_properties' => array(
+      'variables' => array('node' => NULL),
+      'template' => 'tripal_biomaterial_properties',
+      'path' => "$path/theme/templates",
+    ),
+    'tripal_biomaterial_organism' => array(
+      'variables' => array('node' => NULL),
+      'template' => 'tripal_biomaterial_organism',
+      'path' => "$path/theme/templates",
+    ),
+    'tripal_biomaterial_stock' => array(
+      'variables' => array('node' => NULL),
+      'template' => 'tripal_biomaterial_stock',
+      'path' => "$path/theme/templates",
+    ),
+    'tripal_biomaterial_project' => array(
+      'variables' => array('node' => NULL),
+      'template' => 'tripal_biomaterial_project',
+      'path' => "$path/theme/templates",
+    ),
+    'tripal_biomaterial_help' => array(
+      'variables' => 'tripal_biomaterial_help',
+      'variables' =>  array(NULL),
+      'path' => "$path/theme/templates",
+    ),
+  );
+  return $items;
+}
+
+/**
+ * Implementation of hook_form_alter().
+ *
+ * @param $form
+ * @param $form_state
+ * @param $form_id
+ *
+ * @ingroup tripal_biomaterial
+ */
+function tripal_biomaterial_form_alter(&$form, &$form_state, $form_id) {
+
+  if ($form_id == "chado_biomaterial_node_form") {
+    // turn of preview button for insert/updates
+    $form['actions']['preview']['#access'] = FALSE;
+
+    //remove the body field
+    unset($form['body']);
+  }
+}
